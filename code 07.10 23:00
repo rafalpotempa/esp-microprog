@@ -1,0 +1,321 @@
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+
+int delay_value = 50;
+
+bool memory[16][4] = {0};
+
+void set_memory(bool arr[16][4]);
+
+void send_page(bool arr[16][4]);
+
+void program(bool arr[16][4], int delay_val);
+
+void set_state(int pin, bool state);
+
+const char* ssid = "multimetro16908";
+const char* password = "hnxc25iht";
+
+ESP8266WebServer server(80);
+
+//Check if header is present and correct
+bool is_authentified() {
+  if (server.hasHeader("Cookie")) {
+    Serial.print("Found cookie: ");
+    String cookie = server.header("Cookie");
+    Serial.println(cookie);
+    if (cookie.indexOf("ESPSessionID=1") != -1) {
+      Serial.println("Authentification Successful");
+      return true;
+    }
+  }
+  Serial.println("Authentification Failed");
+  return false;
+}
+
+//login page, also called for disconnect
+void handleLogin() {
+  String msg;
+  if (server.hasHeader("Cookie")) {
+    Serial.print("Found cookie: ");
+    String cookie = server.header("Cookie");
+    Serial.println(cookie);
+  }
+  if (server.hasArg("disconnect")) {
+    Serial.println("Disconnection");
+    server.sendHeader("Location", "/login");
+    server.sendHeader("Cache-Control", "no-cache");
+    server.sendHeader("Set-Cookie", "ESPSessionID=0");
+    server.send(301);
+    return;
+  }
+  if (server.hasArg("username") && server.hasArg("password")) {
+    if (server.arg("username") == "admin" &&  server.arg("password") == "admin") {
+      server.sendHeader("Location", "/");
+      server.sendHeader("Cache-Control", "no-cache");
+      server.sendHeader("Set-Cookie", "ESPSessionID=1");
+      server.send(301);
+      Serial.println("Log in Successful.");
+      return;
+    }
+    msg = "Wrong username/password! \n Try again.";
+    Serial.println("Log in Failed");
+  }
+
+  String content = "";
+  content += "<html>";
+  content += "	<head>";
+  content += "		<meta name = \"viewport\" content = \"width=device-width,height=device-height,initial-scale=1.0\"/>";
+  content += "	</head>";
+  content += "	<body style=\'font-family:\"consolas\"\'>";
+  content += "		<form action='/login' method='POST'>";
+  content += "			<input type ='text' name='username' placeholder ='username'><br>";
+  content += "			<input type='password' name='password' placeholder='password'><br>";
+  content += "			<input type='submit' name='SUBMIT' value='Submit' style=\"font-family:consolas\">";
+  content += "		</form>";
+  content += "		<p style=\"color:red;\">" + msg + "</p><br>";
+  content += "	</body>";
+  content += "</html>";
+  server.send(200, "text/html", content);
+}
+
+//root page can be accessed only if authentification is ok
+void handleRoot() {
+  String header;
+  if (!is_authentified()) {
+    server.sendHeader("Location", "/login");
+    server.sendHeader("Cache-Control", "no-cache");
+    server.send(301);
+    return;
+  }
+
+  set_memory(memory, delay_value);
+
+  send_page(memory);
+
+}
+
+//page not found
+void handleNotFound() {
+  String message = "Page Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  for (uint8_t i = 0; i < server.args(); i++) {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+  server.send(404, "text/plain", message);
+}
+
+void setup(void) {
+  Serial.begin(9600);
+  pinMode(D0, OUTPUT);
+  pinMode(D1, OUTPUT);
+  pinMode(D2, OUTPUT);
+  pinMode(D3, OUTPUT);
+  pinMode(D4, OUTPUT);
+  pinMode(D5, OUTPUT);
+  pinMode(D6, OUTPUT);
+  pinMode(D7, OUTPUT);
+  pinMode(D8, OUTPUT);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.println("");
+
+  // Wait for connection
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+
+  server.on("/", handleRoot);
+  server.on("/login", handleLogin);
+  server.on("/inline", []() {
+    server.send(200, "text/plain", "this works without need of authentification");
+  });
+  server.onNotFound(handleNotFound);
+
+  //here the list of headers to be recorded
+  const char * headerkeys[] = { "User-Agent", "Cookie" };
+  size_t headerkeyssize = sizeof(headerkeys) / sizeof(char*);
+  //ask server to track these headers
+  server.collectHeaders(headerkeys, headerkeyssize);
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
+void loop(void) {
+  server.handleClient();
+}
+
+void set_memory(bool arr[16][4], int &delay_val)
+{
+  String cell = "0.0";
+  for (int i = 0; i < 16; i++)
+  {
+    cell.setCharAt(0, i + 48);
+    for (int j = 0; j < 4; j++)
+    {
+      cell.setCharAt(2, j + 48);
+      if (server.hasArg(cell))
+      {
+        arr[i][j] = !((server.arg(cell)).charAt(0) - 48); //char -> int
+      }
+    }
+  }
+  if (server.hasArg("delay"))
+  {
+    if (server.arg("delay") == "50")
+    {
+      delay_val = 100;
+    }
+    if (server.arg("delay") == "100")
+    {
+      delay_val = 200;
+    }
+    else if (server.arg("delay") == "200")
+    {
+      delay_val = 500;
+    }
+    else if (server.arg("delay") == "500")
+    {
+      delay_val = 1000;
+    }
+    else if (server.arg("delay") == "1000")
+    {
+      delay_val = 50;
+    }
+  }
+
+  if (server.hasArg("OK"))
+  {
+    program(memory, delay_value);
+  }
+}
+
+void send_page(bool arr[16][4])
+{
+  String full_string = "";
+  String cell = "0.0";
+
+  full_string += "<html>";
+  full_string += "  <head>";
+  full_string += "    <meta name = \"viewport\" content = \"width=device-width,height=device-height,initial-scale=1.0\"/>";
+  full_string += "  </head>";
+  full_string += "  <body style=\"font-family:consolas\">";
+  full_string += "    <form method='POST'>";
+
+  for (int i = 0; i < 16; i++)
+  {
+    if (i == 0) full_string += "0000";
+    if (i == 1) full_string += "0001";
+    if (i == 2) full_string += "0010";
+    if (i == 3) full_string += "0011";
+    if (i == 4) full_string += "0100";
+    if (i == 5) full_string += "0101";
+    if (i == 6) full_string += "0110";
+    if (i == 7) full_string += "0111";
+    if (i == 8) full_string += "1000";
+    if (i == 9) full_string += "1001";
+    if (i == 10) full_string += "1010";
+    if (i == 11) full_string += "1011";
+    if (i == 12) full_string += "1100";
+    if (i == 13) full_string += "1101";
+    if (i == 14) full_string += "1110";
+    if (i == 15) full_string += "1111";
+
+    cell.setCharAt(0, i + 48);
+
+    for (int j = 0; j < 4; j++)
+    {
+      cell.setCharAt(2, j + 48);
+
+      full_string += " <input type='submit' name='";
+      full_string += cell;
+      full_string += "' value='";
+      full_string += arr[i][j];
+      full_string += "'> ";
+    }
+    full_string += " </br> ";
+  }
+
+  full_string += "Clock delay";
+  full_string += " <input type='submit' name='delay' value='";
+  full_string += delay_value;
+  full_string += "'> ";
+
+  full_string += " </br> ";
+
+  full_string += " <input type='submit' name='OK' value='OK'> ";
+
+  full_string += "    </form>";
+  full_string += "    <a href=\"/login?disconnect=yes\">Log out</a>";
+  full_string += "  </body>";
+  full_string += "</html>";
+
+  server.send(200, "text/html", full_string);
+}
+
+void program(bool arr[16][4], int delay_val)
+{
+  String state;
+  for (int i = 0; i < 16; i++)
+  {
+    if (i == 0) state = "0000";
+    if (i == 1) state = "0001";
+    if (i == 2) state = "0010";
+    if (i == 3) state = "0011";
+    if (i == 4) state = "0100";
+    if (i == 5) state = "0101";
+    if (i == 6) state = "0110";
+    if (i == 7) state = "0111";
+    if (i == 8) state = "1000";
+    if (i == 9) state = "1001";
+    if (i == 10) state = "1010";
+    if (i == 11) state = "1011";
+    if (i == 12) state = "1100";
+    if (i == 13) state = "1101";
+    if (i == 14) state = "1110";
+    if (i == 15) state = "1111";
+
+    digitalWrite(D0, state.charAt(0)-48);
+    digitalWrite(D1, state.charAt(1)-48);
+    digitalWrite(D2, state.charAt(2)-48);
+    digitalWrite(D3, state.charAt(3)-48);
+    digitalWrite(D4, memory[i][0]);
+    digitalWrite(D5, memory[i][1]);
+    digitalWrite(D6, memory[i][2]);
+    digitalWrite(D7, memory[i][3]);
+
+    delay(delay_val);
+    digitalWrite(D8, 1);
+    delay(delay_val);
+    digitalWrite(D8, 0);
+    delay(delay_val);
+
+  }
+
+    digitalWrite(D0, 0);
+    digitalWrite(D1, 0);
+    digitalWrite(D2, 0);
+    digitalWrite(D3, 0);
+    digitalWrite(D4, 0);
+    digitalWrite(D5, 0);
+    digitalWrite(D6, 0);
+    digitalWrite(D7, 0);
+
+  }
