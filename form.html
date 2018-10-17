@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <form action="" method="get">
+        <label for=""></label>
+        <input type="button" id="control00" onclick="changeValue('control00')" value="0">
+        <input type="button" name="control00" value="0">
+        <input type="button" id="control01" onclick="changeValue('control01')" value="0">
+        <input type="button" name="control01" value="0">
+        <input type="button" id="control02" onclick="changeValue('control02')" value="0">
+        <input type="button" name="control02" value="0">
+        <input type="button" id="control03" onclick="changeValue('control03')" value="0">
+        <input type="button" name="control03" value="0">
+        <br>
+        <br>
+        <button type="submit">Send</button>
+    </form>
+    <script>
+
+        function changeValue(id) {
+            var element = document.getElementById(id);
+            param = element.value;
+            if (param == 1) {
+                element.setAttribute("onclick", "changeValue('" + id + "')");
+                document.getElementsByName(id).value = 0;
+                element.value = 0;
+            } else {
+                element.setAttribute("onclick", "changeValue('" + id + "')");
+                document.getElementsByName(id).value = 1;
+                element.value = 1;
+            }   
+        }
+    </script>
+</body>
+</html>
